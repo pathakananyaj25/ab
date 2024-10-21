@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Silent Speak: Walking Guidelines</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #f0f0f0, #e0e0e0);
+            color: #333;
+            text-align: center;
+            padding: 30px;
+        }
+        h1 {
+            font-size: 3em;
+            color: #0056b3;
+            margin-bottom: 30px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        }
+        .button {
+            background-color: #007BFF;
+            color: white;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 50px;
+            font-size: 1.5em;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin-bottom: 30px;
+        }
+        .button:focus {
+            outline: none;
+        }
+        .button:hover {
+            background-color: #0056b3;
+        }
+        select {
+            padding: 15px;
+            font-size: 1.2em;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .instructions {
+            font-size: 1.5em;
+            color: #555;
+            margin-top: 40px;
+            display: none; /* Initially hide the instructions */
+        }
+        #map {
+            height: 300px;
+            margin-bottom: 20px;
+            border-radius: 15px;
+        }
+        .voice-button {
+            background-color: #28a745;
+            color: white;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 50px;
+            font-size: 1.5em;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: background-color 0.3s ease;
+        }
+        .voice-button:hover {
+            background-color: #218838;
+        }
+    </style>
+    <!-- Leaflet.js CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+</head>
+<body>
+
+    <h1>Silent Speak</h1>
+
+    <div class="container">
+        <button class="button" id="locationBtn" onclick="getLocation()">Click here to get your current location</button>
+
+        <div id="map"></div>
+
+        <select id="language" onchange="changeLanguage()">
+            <option value="en">English</option>
+            <option value="hi">Hindi</option>
+        </select>
+
+        <div class="instructions" id="instructions">
+            Directions will be spoken here continuously.
+        </div>
+
+        <button class="voice-button" onclick="startVoiceRecognition()">Voice Input for Location</button>
+    </div>
+
+    <!-- Leaflet.js JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <!-- Leaflet Routing Machine for routes -->
+    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+
+    <script>
+        let map;
+        let userLat, userLng;
+        let language = 'en';
+        let routingControl;
+
+        // Initialize OpenStreetMap with Leaflet.js
+        function initMap() {
+            map = L.map('map').setView([28.7041, 77.1025], 15);  // Default location is Delhi
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+        }
+
+        // Get User Location and Speak
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(showPosition, handleError);
+            } else {
+                speakText("Geolocation is not supported by this browser.");
+            }
+        }
+
+        function showPosition(position) {
+            userLat = position.coords.latitude;
+            userLng = position.coords.longitude;
+            let locationText = `Your current location is latitude ${userLat}, longitude ${userLng}.`;
+            speakText(locationText);
+
+            // Display user's location on map
+            const userLocation = [userLat, userLng];
+            map.setView(userLocation, 15);
+            L.marker(userLocation).addTo(map)
+                .bindPopup("You are here").openPopup();
+        }
+
+        function handleError(error) {
+            let errorMsg = "Unable to retrieve your location.";
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMsg = "Permission denied to access location.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMsg = "Location information is unavailable.";
+                    break;
+                case error.TIMEOUT:
+                    errorMsg = "The request to get location timed out.";
+                    break;
+                case error.UNKNOWN_ERROR:
+                    errorMsg = "An unknown error occurred.";
+                    break;
+            }
+            speakText(errorMsg);
+        }
+
+        // Speak Text Function
+        function speakText(text) {
+            let msg = new SpeechSynthesisUtterance(text);
+            msg.lang = language === 'hi' ? 'hi-IN' : 'en-US';
+            window.speechSynthesis.speak(msg);
+        }
+
+        // Change Language for Speech
+        function changeLanguage() {
+            language = document.getElementById("language").value;
+            let instructions = language === 'hi' ? "निर्देश यहाँ लगातार बोले जाएंगे।" : "Directions will be spoken here continuously.";
+            document.getElementById("instructions").innerText = instructions;
+        }
+
+        // Voice Recognition for Location
+        function startVoiceRecognition() {
+            let recognition = new webkitSpeechRecognition();
+            recognition.lang = language === 'hi' ? 'hi-IN' : 'en-US';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            recognition.onresult = function(event) {
+                let location = event.results[0][0].transcript;
+                speakText(`You said ${location}. Fetching directions now.`);
+                fetchDirections(location);
+            };
+
+            recognition.start();
+        }
+
+        // Fetch Directions using OpenRouteService API via Leaflet Routing Machine
+        function fetchDirections(destination) {
+            if (!userLat || !userLng) {
+                speakText("Unable to fetch your current location. Please try again.");
+                return;
+            }
+
+            if (routingControl) {
+                map.removeControl(routingControl);  // Remove existing route
+            }
+
+            // Initialize the routing with OpenRouteService using your token
+            routingControl = L.Routing.control({
+                waypoints: [
+                    L.latLng(userLat, userLng),  // Start: User's current location
+                    L.latLng(destination)  // Destination: from voice input or manual entry
+                ],
+                routeWhileDragging: true,
+                geocoder: L.Control.Geocoder.nominatim(),
+                language: language === 'hi' ? 'hi-IN' : 'en',
+                createMarker: function(i, wp) {
+                    return L.marker(wp.latLng).bindPopup(i === 0 ? 'Start' : 'Destination');
+                },
+                router: L.Routing.openrouteservice('5b3ce3597851110001cf62483fb34ce57360480a933ab4e72040627e')  // Replace this with your ORS token
+            }).addTo(map);
+            
+            routingControl.on('routesfound', function(e) {
+                let route = e.routes[0];
+                speakDirections(route);
+                
+                // Display instructions section
+                document.getElementById("instructions").style.display = "block";  // Show instructions
+                document.getElementById("instructions").innerText = "Walking guidelines loaded. Directions will be spoken step-by-step.";
+            });
+        }
+
+        // Speak Directions Turn by Turn
+        function speakDirections(route) {
+            let steps = route.instructions;
+            steps.forEach((step, index) => {
+                setTimeout(() => {
+                    let instruction = step.text;
+                    speakText(`Step ${index + 1}: ${instruction}`);
+                }, index * 5000);  // Speak every step with a delay
+            });
+        }
+
+        // Initialize the map when the page loads
+        window.onload = initMap;
+    </script>
+</body>
+</html>
